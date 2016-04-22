@@ -1,19 +1,45 @@
 package com.example.derek.cloudclient;
 
+
+
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.net.ConnectivityManager;
+import android.net.NetworkInfo;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.text.method.ScrollingMovementMethod;
+import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.TextView;
 
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
 import com.microsoft.windowsazure.mobileservices.*;
 import com.microsoft.windowsazure.mobileservices.table.MobileServiceTable;
 
+import java.io.IOException;
+import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.List;
+
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.content.SharedPreferences.Editor;
+
+import com.microsoft.windowsazure.mobileservices.authentication.MobileServiceAuthenticationProvider;
+import com.microsoft.windowsazure.mobileservices.authentication.MobileServiceUser;
+
+
+
 
 public class MainActivity extends Activity {
 
@@ -37,9 +63,8 @@ public class MainActivity extends Activity {
 
        try {
 
-           // using the MobileServiceClient global object, create a reference to YOUR service
            mClient = new MobileServiceClient(
-                   "https://mcservice1.azurewebsites.net",
+                   "https://mcauthen1.azurewebsites.net",
                    this
            );
 
@@ -49,78 +74,165 @@ public class MainActivity extends Activity {
 
            display = (TextView) findViewById(R.id.displayData);
 
+           // start the authentication process
+           authenticate();
 
        } catch (MalformedURLException e) {
             e.printStackTrace();
        }
     }
 
+    public boolean isOnline() {
+        ConnectivityManager cm =
+                (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkInfo netInfo = cm.getActiveNetworkInfo();
+        return netInfo != null && netInfo.isConnectedOrConnecting();
+    }
+
+    private void authenticate() {
+
+        if (isOnline())
+        {
+
+            ListenableFuture<MobileServiceUser> mLogin = mClient.login(MobileServiceAuthenticationProvider.Google);
+
+            Futures.addCallback(mLogin, new FutureCallback<MobileServiceUser>() {
+                @Override
+                public void onFailure(Throwable exc) {
+                    createAndShowDialog((exc.toString()), "Error");
+                }
+
+                @Override
+                public void onSuccess(MobileServiceUser user) {
+                    createAndShowDialog(String.format(
+                            "You are now logged in - %1$2s",
+                            user.getUserId()), "Success");
+
+                    // call below method to show table data upon successful Twitter authentication
+                    //showTableData();
+                }
+            });
+        }
+        else
+        {
+            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+            alertDialog.setTitle("Alert");
+            alertDialog.setMessage("No Network Connection Found\nPlease try again when you have an internet connection");
+            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                            System.exit(0);
+                        }
+                    });
+            alertDialog.show();
+        }
+    }
+
+    private void createAndShowDialog(String message, String title) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
+        builder.setMessage(message);
+        builder.setTitle(title);
+        builder.create().show();
+    }
+
     // method to add data to mobile service table
     public void addData(View view) {
 
+        if (isOnline()) {
+            // create reference to TextView input widgets
+            TextView data1 = (TextView) findViewById(R.id.insertText1);
+            // the below textview widget isn't used (yet!)
+            TextView data2 = (TextView) findViewById(R.id.insertText2);
 
-        // create reference to TextView input widgets
-        TextView data1 = (TextView) findViewById(R.id.insertText1);
-        // the below textview widget isn't used (yet!)
-        TextView data2 = (TextView) findViewById(R.id.insertText2);
+            // Create a new data item from the text input
+            final ToDoItem item = new ToDoItem();
+            item.text = data1.getText().toString();
 
-        // Create a new data item from the text input
-        final ToDoItem item = new ToDoItem();
-        item.text = data1.getText().toString();
+            // This is an async task to call the mobile service and insert the data
+            new AsyncTask<Void, Void, Void>() {
+                @Override
+                protected Void doInBackground(Void... params) {
+                    try {
+                        //
+                        final ToDoItem entity = mToDoTable.insert(item).get();  //addItemInTable(item);
 
-        // This is an async task to call the mobile service and insert the data
-        new AsyncTask<Void, Void, Void>() {
-            @Override
-            protected Void doInBackground(Void... params) {
-                try {
-                    //
-                    final ToDoItem entity = mToDoTable.insert(item).get();  //addItemInTable(item);
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
 
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
+                                // code inserted here can update UI elements, if required
 
-                        // code inserted here can update UI elements, if required
+                            }
+                        });
+                    } catch (Exception exception) {
 
+                    }
+                    return null;
+                }
+            }.execute();
+        }
+        else
+        {
+            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+            alertDialog.setTitle("Alert");
+            alertDialog.setMessage("No Network Connection Found or User Not Logged In");
+            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
                         }
                     });
-                } catch (Exception exception) {
-
-                }
-                return null;
-            }
-        }.execute();
+            alertDialog.show();
+        }
     }
 
     // method to view data from mobile service table
     public void viewData(View view) {
 
-        display.setText("Loading...");
+        if (isOnline()) {
 
-        new AsyncTask<Void, Void, Void>() {
-            @Override
-            protected Void doInBackground(Void... params) {
-                try {
-                    final List<ToDoItem> result = mToDoTable.select("id", "text").execute().get();
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            // get all data from column 'text' only add add to the stringbuilder
-                            for (ToDoItem item : result) {
-                                sb.append(item.text + " ");
+            display.setText("Loading...");
+
+            new AsyncTask<Void, Void, Void>() {
+                @Override
+                protected Void doInBackground(Void... params) {
+                    try {
+                        final List<ToDoItem> result = mToDoTable.select("id", "text").execute().get();
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                // get all data from column 'text' only add add to the stringbuilder
+                                for (ToDoItem item : result) {
+                                    sb.append(item.text + " ");
+                                }
+
+                                // display stringbuilder text using scrolling method
+                                display.setText(sb.toString());
+                                display.setMovementMethod(new ScrollingMovementMethod());
+                                sb.setLength(0);
                             }
-
-                            // display stringbuilder text using scrolling method
-                            display.setText(sb.toString());
-                            display.setMovementMethod(new ScrollingMovementMethod());
-                            sb.setLength(0);
+                        });
+                    } catch (Exception exception) {
+                    }
+                    return null;
+                }
+            }.execute();
+        }
+        else
+        {
+            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+            alertDialog.setTitle("Alert");
+            alertDialog.setMessage("No Network Connection Found or User Not Logged In");
+            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
                         }
                     });
-                } catch (Exception exception) {
-                }
-                return null;
-            }
-        }.execute();
+            alertDialog.show();
+        }
     }
 
 
