@@ -40,8 +40,9 @@ import com.microsoft.windowsazure.mobileservices.authentication.MobileServiceUse
 
 
 
-
 public class MainActivity extends Activity {
+
+    public boolean isloggedin = false;
 
     // Create an object to connect to your mobile app service
     private MobileServiceClient mClient;
@@ -89,10 +90,31 @@ public class MainActivity extends Activity {
         return netInfo != null && netInfo.isConnectedOrConnecting();
     }
 
+
+
+    public void login(View view) {
+        if (isloggedin == false) {
+            authenticate();
+        }
+        else {
+            AlertDialog alertDialog = new AlertDialog.Builder(MainActivity.this).create();
+            alertDialog.setTitle("Alert");
+            alertDialog.setMessage("You are already logged in");
+            alertDialog.setButton(AlertDialog.BUTTON_NEUTRAL, "OK",
+                    new DialogInterface.OnClickListener() {
+                        public void onClick(DialogInterface dialog, int which) {
+                            dialog.dismiss();
+                        }
+                    });
+            alertDialog.show();
+        }
+    }
+
     private void authenticate() {
 
         if (isOnline())
         {
+            isloggedin = true;
 
             ListenableFuture<MobileServiceUser> mLogin = mClient.login(MobileServiceAuthenticationProvider.Google);
 
@@ -122,7 +144,6 @@ public class MainActivity extends Activity {
                     new DialogInterface.OnClickListener() {
                         public void onClick(DialogInterface dialog, int which) {
                             dialog.dismiss();
-                            System.exit(0);
                         }
                     });
             alertDialog.show();
